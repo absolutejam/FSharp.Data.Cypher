@@ -219,7 +219,7 @@ module Cypher =
     // TODO:
     // Moved to 4.0 driver
     // - AsyncSession() - Add in session Config() options? Or expose passing in the session?
-    // - WriteTransactionAsync() - Add in TransactionConfig()
+    // - WriteTransactionAsync() - Add in TransactionOptions()
     // - Back pressure handling on IResultCursor : Not supported currently in dotnet driver
 
     let query (cypher : Cypher<'T>) = cypher.Query
@@ -270,15 +270,20 @@ module Cypher =
         async {
             let session = driver.AsyncSession()
             try
-                let run (t : IAsyncTransaction) = t.RunAsync(cypher.Query.ParameterizedMultiline, makeParameters cypher)
+                let run (t : IAsyncTransaction) =
+                    let statementCursor =
+                        t.RunAsync(cypher.Query.ParameterizedMultiline, makeParameters cypher)
+                        |> Async.AwaitTask
+                        |> Async.RunSynchronously
 
-                let! statementCursor =
+                    makeResults statementCursor map cypher
+                    |> Async.StartAsTask
+
+                let! (results, summary) =
                     if cypher.Query.IsWrite
                     then session.WriteTransactionAsync run
                     else session.ReadTransactionAsync run
                     |> Async.AwaitTask
-
-                let! (results, summary) = makeResults statementCursor map cypher
 
                 return QueryResult(results, summary)
 
